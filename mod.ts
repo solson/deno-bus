@@ -58,12 +58,13 @@ console.log(`server auth response: ${response.trimEnd()}`);
   await Deno.copy(buf, conn);
 }
 
-dbg(
-  new TextDecoder().decode(
-    await readExact(conn, new Uint8Array(262)) as Uint8Array,
-  ),
-);
+{
+  const buf = new Uint8Array(262);
+  await readExact(conn, buf);
+  dbg(new TextDecoder().decode(buf));
+}
 
+// deno-fmt-ignore
 {
   const buf = new Deno.Buffer();
   const msg = new MessageWriter(buf);
@@ -91,10 +92,10 @@ dbg(
   await Deno.copy(buf, conn);
 }
 
-dbg(
-  new TextDecoder().decode(
-    await readExact(conn, new Uint8Array(136)) as Uint8Array,
-  ),
-);
+{
+  const buf = new Uint8Array(136);
+  await readExact(conn, buf);
+  dbg(new TextDecoder().decode(buf));
+}
 
 conn.close();
