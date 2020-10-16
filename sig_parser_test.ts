@@ -1,4 +1,4 @@
-import { parseSig } from "./sig_parser.ts";
+import { parseSig, parseSigs } from "./sig_parser.ts";
 import {
   assertEquals,
   assertThrows,
@@ -68,5 +68,17 @@ Deno.test("parseSig", () => {
     () => parseSig("{"),
     RangeError,
     "unknown type '{' (did you mean 'a{'?)",
+  );
+});
+
+Deno.test("parseSigs", () => {
+  assertEquals<DBusType2[]>(
+    parseSigs("ayy"),
+    [array(byte()), byte()],
+  );
+
+  assertEquals<DBusType2[]>(
+    parseSigs("yyas"),
+    [byte(), byte(), array(string())],
   );
 });
