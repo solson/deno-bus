@@ -15,7 +15,9 @@ import { encodeUtf8, Endianness, nativeEndian } from "./util/encoding.ts";
 import { parseSig, parseSigs } from "./sig_parser.ts";
 
 export function encodeEndianess(e: Endianness): number {
-  return e === Endianness.LE ? charCode("l") : charCode("B");
+  if (e === Endianness.LE) return charCode("l");
+  if (e === Endianness.BE) return charCode("B");
+  assertExhaustive(e);
 }
 
 export function decodeEndianess(flag: number): Endianness | undefined {
