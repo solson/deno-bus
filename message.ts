@@ -13,7 +13,6 @@ import { charCode } from "https://deno.land/std@0.74.0/io/util.ts";
 import { assertExhaustive } from "./util/assert.ts";
 import { encodeUtf8, Endianness, nativeEndian } from "./util/encoding.ts";
 import { parseSig, parseSigs } from "./sig_parser.ts";
-import { parse } from "https://deno.land/std@0.74.0/path/win32.ts";
 
 export function encodeEndianess(e: Endianness): number {
   return e === Endianness.LE ? charCode("l") : charCode("B");
