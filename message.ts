@@ -1,9 +1,11 @@
 import {
   DBusType2,
   DBusValue,
+  FixedType,
   FixedTypeSig,
   fixedTypeSizes,
   FixedTypeUnknown,
+  FixedTypeVal,
   isFixedTypeSig,
   isStringTypeSig,
   StringTypeSig,
@@ -13,6 +15,8 @@ import { charCode } from "https://deno.land/std@0.74.0/io/util.ts";
 import { assertExhaustive } from "./util/assert.ts";
 import { encodeUtf8, Endianness, nativeEndian } from "./util/encoding.ts";
 import { parseSig, parseSigs } from "./sig_parser.ts";
+import { readNBytes } from "./util/io.ts";
+import { dbg } from "./util/debug.ts";
 
 export function encodeEndianess(e: Endianness): number {
   if (e === Endianness.LE) return charCode("l");
@@ -20,14 +24,13 @@ export function encodeEndianess(e: Endianness): number {
   assertExhaustive(e);
 }
 
-export function decodeEndianess(flag: number): Endianness | undefined {
+export function decodeEndianness(flag: number): Endianness | undefined {
   if (flag === charCode("l")) return Endianness.LE;
   if (flag === charCode("B")) return Endianness.BE;
 }
 
 /** See https://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol. */
 export enum MessageType {
-  INVALID = 0,
   METHOD_CALL = 1,
   METHOD_RETURN = 2,
   ERROR = 3,
@@ -43,7 +46,6 @@ export enum HeaderFlags {
 
 /** See https://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-header-fields. */
 export enum HeaderField {
-  INVALID = 0,
   PATH = 1,
   INTERFACE = 2,
   MEMBER = 3,
@@ -54,11 +56,6 @@ export enum HeaderField {
   SIGNATURE = 8,
   UNIX_FDS = 9,
 }
-
-// NOTE: Fragment for DBusReader.
-// if (this.endianness === undefined) {
-//   throw new Error("endian-sensitive read with unknown endianness");
-// }
 
 /** See https://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-marshaling. */
 export class MessageWriter {
@@ -275,4 +272,100 @@ export class MessageWriter {
     f();
     return this.pos - beforePos;
   }
+}
+
+/** See https://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-marshaling. */
+class MessageReader {
+  private pos = 0;
+  private endianness: Endianness | undefined;
+
+  constructor(private reader: Deno.Reader) {}
+
+  async readFixed<Sig extends FixedTypeSig>(
+    sig: Sig,
+  ): Promise<FixedTypeVal<Sig>>;
+  async readFixed(sig: FixedTypeSig): Promise<FixedType["value"]> {
+    const size = fixedTypeSizes[sig];
+    await this.skipPadding(size);
+    const isLE = this.getEndianness() === Endianness.LE;
+    const bytes = await this.readRawBytes(size);
+    const view = new DataView(bytes.buffer);
+
+    switch (sig) {
+      case "y":
+        return view.getUint8(0);
+      case "b": {
+        const raw = view.getUint32(0, isLE);
+        if (raw !== 0 && raw !== 1) {
+          throw new Deno.errors.InvalidData(
+            `expected 0 or 1 for boolean, but got ${raw}`,
+          );
+        }
+        return raw === 1;
+      }
+      case "n":
+        return view.getInt16(0, isLE);
+      case "q":
+        return view.getUint16(0, isLE);
+      case "i":
+        return view.getInt32(0, isLE);
+      case "u":
+        return view.getUint32(0, isLE);
+      case "x":
+        return view.getBigInt64(0, isLE);
+      case "t":
+        return view.getBigUint64(0, isLE);
+      case "d":
+        return view.getFloat64(0, isLE);
+      case "h":
+        throw new Error("todo: unix_fd type");
+      default:
+        assertExhaustive(sig);
+    }
+  }
+
+  async readEndianness(): Promise<void> {
+    const [b] = await this.readRawBytes(1);
+    const endianness = decodeEndianness(b);
+    if (endianness === undefined) {
+      throw new Deno.errors.InvalidData(
+        `invalid endianness byte in message: ${b}`,
+      );
+    }
+    this.endianness = endianness;
+  }
+
+  async readRawBytes(n: number): Promise<Uint8Array> {
+    const bytes = await readNBytes(this.reader, n);
+    this.pos += n;
+    return bytes;
+  }
+
+  async skipPadding(alignment: number): Promise<void> {
+    if (this.pos % alignment === 0) return;
+    const padding = alignment - this.pos % alignment;
+    await this.readRawBytes(padding);
+  }
+
+  getEndianness(): Endianness {
+    if (this.endianness === undefined) {
+      throw new Error("getEndianness before call to readEndianness");
+    }
+    return this.endianness;
+  }
+}
+
+export async function readMessage(r: Deno.Reader): Promise<void> {
+  const mr = new MessageReader(r);
+  await mr.readEndianness();
+  dbg(MessageType[await mr.readFixed("y")]);
+  dbg(await mr.readFixed("y"), "flags");
+  dbg(await mr.readFixed("y"), "major protocol version");
+  const body_len = dbg(await mr.readFixed("u"), "body length");
+  dbg(await mr.readFixed("u"), "serial");
+  const fields_len = dbg(await mr.readFixed("u"), "fields length");
+  await mr.skipPadding(8);
+  dbg(new TextDecoder().decode(await mr.readRawBytes(fields_len)), "fields");
+  await mr.skipPadding(8);
+  dbg(new TextDecoder().decode(await mr.readRawBytes(body_len)), "body");
 }

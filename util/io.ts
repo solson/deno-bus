@@ -27,3 +27,18 @@ export function readExactSync(r: Deno.ReaderSync, buf: Uint8Array): void {
     bytesRead += partial;
   }
 }
+
+export async function readNBytes(
+  r: Deno.Reader,
+  n: number,
+): Promise<Uint8Array> {
+  const buf = new Uint8Array(n);
+  await readExact(r, buf);
+  return buf;
+}
+
+export function readNBytesSync(r: Deno.ReaderSync, n: number): Uint8Array {
+  const buf = new Uint8Array(n);
+  readExactSync(r, buf);
+  return buf;
+}

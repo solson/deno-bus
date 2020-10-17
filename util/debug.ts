@@ -1,4 +1,8 @@
-export function dbg<T>(x: T): T {
-  console.log("%o", x);
+export function dbg<T>(x: T, msg?: string): T {
+  if (msg === undefined) {
+    console.log("%o", x);
+  } else {
+    console.log("%s: %o", msg, x);
+  }
   return x;
 }

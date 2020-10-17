@@ -5,10 +5,9 @@ import {
   HeaderField,
   MessageType,
   MessageWriter,
+  readMessage,
 } from "./message.ts";
-import { dbg } from "./util/debug.ts";
 import { encodeUtf8 } from "./util/encoding.ts";
-import { readExact } from "./util/io.ts";
 
 function getSessionBusAddr(): string {
   const addr = Deno.env.get("DBUS_SESSION_BUS_ADDRESS");
@@ -31,7 +30,7 @@ const conn = await Deno.connect({
 
 await Deno.writeAll(conn, encodeUtf8("\0AUTH EXTERNAL 31303030\r\nBEGIN\r\n"));
 
-const response = (await BufReader.create(conn).readString("\n"));
+const response = await BufReader.create(conn).readString("\n");
 if (response === null) throw new Error("no auth response from server");
 console.log(`server auth response: ${response.trimEnd()}`);
 
@@ -56,12 +55,6 @@ console.log(`server auth response: ${response.trimEnd()}`);
   msg.writePadding(8);
 
   await Deno.copy(buf, conn);
-}
-
-{
-  const buf = new Uint8Array(262);
-  await readExact(conn, buf);
-  dbg(new TextDecoder().decode(buf));
 }
 
 // deno-fmt-ignore
@@ -92,10 +85,4 @@ console.log(`server auth response: ${response.trimEnd()}`);
   await Deno.copy(buf, conn);
 }
 
-{
-  const buf = new Uint8Array(136);
-  await readExact(conn, buf);
-  dbg(new TextDecoder().decode(buf));
-}
-
-conn.close();
+while (true) await readMessage(conn);
