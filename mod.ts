@@ -1,13 +1,10 @@
 import { BufReader } from "https://deno.land/std@0.74.0/io/bufio.ts";
 import { join } from "https://deno.land/std@0.74.0/path/mod.ts";
-import {
-  encodeEndianess,
-  HeaderField,
-  MessageType,
-  MessageWriter,
-  readMessage,
-} from "./message.ts";
-import { encodeUtf8 } from "./util/encoding.ts";
+import { HeaderField, MessageType, RawMessage } from "./message.ts";
+import { MessageReader } from "./message_reader.ts";
+import { encodeEndianess, MessageWriter } from "./message_writer.ts";
+import { dbg } from "./util/debug.ts";
+import { encodeUtf8, nativeEndian } from "./util/encoding.ts";
 
 function getSessionBusAddr(): string {
   const addr = Deno.env.get("DBUS_SESSION_BUS_ADDRESS");
@@ -35,54 +32,43 @@ if (response === null) throw new Error("no auth response from server");
 console.log(`server auth response: ${response.trimEnd()}`);
 
 {
-  const buf = new Deno.Buffer();
-  const msg = new MessageWriter(buf);
-
-  msg.write("y", encodeEndianess(msg.endianness));
-  msg.write("y", MessageType.METHOD_CALL);
-  msg.write("y", 0); // flags
-  msg.write("y", 1); // major protocol version
-  msg.write("u", 0); // byte length of body
-  msg.write("u", 1); // serial/cookie
-  msg.write("a(yv)", [
-    [HeaderField.PATH, { sig: "o", value: "/org/freedesktop/DBus" }],
-    [HeaderField.DESTINATION, { sig: "s", value: "org.freedesktop.DBus" }],
-    [HeaderField.INTERFACE, { sig: "s", value: "org.freedesktop.DBus" }],
-    [HeaderField.MEMBER, { sig: "s", value: "Hello" }],
-  ]);
-
-  // End-of-header padding just before the body (which is empty).
-  msg.writePadding(8);
-
-  await Deno.copy(buf, conn);
+  const msg: RawMessage = {
+    endianness: nativeEndian(),
+    messageType: MessageType.METHOD_CALL,
+    flags: 0,
+    serial: 1,
+    fields: new Map([
+      [HeaderField.PATH, { sig: "o", value: "/org/freedesktop/DBus" }],
+      [HeaderField.DESTINATION, { sig: "s", value: "org.freedesktop.DBus" }],
+      [HeaderField.INTERFACE, { sig: "s", value: "org.freedesktop.DBus" }],
+      [HeaderField.MEMBER, { sig: "s", value: "Hello" }],
+    ]),
+    body: [],
+  };
+  console.log("\nSENDING: %o", msg);
+  await Deno.copy(MessageWriter.encode(msg), conn);
 }
 
 // deno-fmt-ignore
 {
-  const buf = new Deno.Buffer();
-  const msg = new MessageWriter(buf);
-  const sig = "susssasa{sv}i";
-
-  msg.write("y", encodeEndianess(msg.endianness));
-  msg.write("y", MessageType.METHOD_CALL);
-  msg.write("y", 0); // flags
-  msg.write("y", 1); // major protocol version
-  const writeBodyLen = msg.writeLater("u"); // byte length of body
-  msg.write("u", 2); // serial/cookie
-  msg.write("a(yv)", [
-    [HeaderField.DESTINATION, { sig: "s", value: "org.freedesktop.Notifications" }],
-    [HeaderField.PATH, { sig: "o", value: "/org/freedesktop/Notifications" }],
-    [HeaderField.INTERFACE, { sig: "s", value: "org.freedesktop.Notifications" }],
-    [HeaderField.MEMBER, { sig: "s", value: "Notify" }],
-    [HeaderField.SIGNATURE, { sig: "g", value: sig }],
-  ]);
-  msg.writePadding(8);
-
-  writeBodyLen(msg.measureLength(() => {
-    msg.writeMany(sig, "Deno", 0, "", "", "Hello from Deno", [], new Map(), 5000);
-  }));
-
-  await Deno.copy(buf, conn);
+  const msg: RawMessage = {
+    endianness: nativeEndian(),
+    messageType: MessageType.METHOD_CALL,
+    flags: 0,
+    serial: 2,
+    fields: new Map([
+      [HeaderField.DESTINATION, { sig: "s", value: "org.freedesktop.Notifications" }],
+      [HeaderField.PATH, { sig: "o", value: "/org/freedesktop/Notifications" }],
+      [HeaderField.INTERFACE, { sig: "s", value: "org.freedesktop.Notifications" }],
+      [HeaderField.MEMBER, { sig: "s", value: "Notify" }],
+      [HeaderField.SIGNATURE, { sig: "g", value: "susssasa{sv}i" }],
+    ]),
+    body: ["Deno", 0, "", "", "Hello from Deno", [], new Map(), 5000],
+  };
+  console.log("\nSENDING: %o", msg);
+  await Deno.copy(MessageWriter.encode(msg), conn);
 }
 
-while (true) await readMessage(conn);
+while (true) console.log("\nRECEIVING: %o", await MessageReader.read(conn));
+
+// conn.close();

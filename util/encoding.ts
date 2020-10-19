@@ -12,3 +12,8 @@ export function nativeEndian(): Endianness {
 export function encodeUtf8(s: string): Uint8Array {
   return new TextEncoder().encode(s);
 }
+
+export function decodeUtf8(b: Uint8Array): string {
+  // TODO(solson): Figure out how to check for invalid UTF-8.
+  return new TextDecoder().decode(b);
+}

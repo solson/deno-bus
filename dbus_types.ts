@@ -1,3 +1,5 @@
+import { ValidationError } from "./errors.ts";
+
 // TODO(solson): In the upcoming TypeScript 4.1, I will be able to precisely
 // type the possible DBus signature strings and their corresponding TS types.
 export type DBusValue = {
@@ -128,14 +130,6 @@ export function validateFixed(v: FixedTypeUnknown): asserts v is FixedType {
     case "d":
       if (typeof v.value !== "number") throw new ValidationError(v, "number");
       break;
-  }
-}
-
-export class ValidationError extends Error {
-  constructor({ sig, value }: FixedTypeUnknown, expected: string) {
-    const name = typeNames[sig];
-    const type = typeof value;
-    super(`signature "${sig}" (${name}) expected ${expected}, got ${type}`);
   }
 }
 
