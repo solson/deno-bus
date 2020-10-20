@@ -11,7 +11,7 @@ import {
   StringTypeSig,
 } from "./dbus_types.ts";
 import { ProtocolError } from "./errors.ts";
-import { HeaderField, HeaderFlags, RawMessage } from "./message.ts";
+import { HeaderField, Message } from "./message.ts";
 import { parseSig, parseSigs } from "./sig_parser.ts";
 import { assertExhaustive } from "./util/assert.ts";
 import { decodeUtf8, Endianness } from "./util/encoding.ts";
@@ -29,27 +29,35 @@ export class MessageReader {
 
   constructor(private reader: Deno.Reader) {}
 
-  static async read(reader: Deno.Reader): Promise<RawMessage> {
+  static async read(
+    reader: Deno.Reader,
+  ): Promise<{ msg: Message; serial: number }> {
     const r = new MessageReader(reader);
     const endianness = await r.readEndianness();
-    const messageType = await r.readFixed("y");
-    const flags = await r.readFixed("y") as HeaderFlags;
+    const type = await r.readFixed("y");
+
+    const msg = new Message(type);
+    msg.flags = await r.readFixed("y");
+
     const majorProtocolVersion = await r.readFixed("y");
     if (majorProtocolVersion !== 1) {
       throw new ProtocolError(
         `unsupported major protocol version: ${majorProtocolVersion}`,
       );
     }
+
     const bodyLen = await r.readFixed("u");
+    // TODO(solson): Validate that serial is non-zero.
     const serial = await r.readFixed("u");
     // TODO(solson): Detect duplicate keys.
-    const fields = new Map(await r.read("a(yv)") as [number, DBusValue][]);
+    msg.fields = new Map(await r.read("a(yv)") as [number, DBusValue][]);
     await r.skipPadding(8);
-    const sig = fields.get(HeaderField.SIGNATURE)?.value as string ?? "";
-    const body = await r.readMany(sig);
-    return { endianness, messageType, flags, serial, fields, body };
+    const sig = msg.fields.get(HeaderField.SIGNATURE)?.value as string ?? "";
+    msg.body = await r.readMany(sig);
+    return { msg, serial };
   }
 
+  // TODO(solson): Finish the `limit` work.
   async read(sig: string, limit?: number): Promise<unknown> {
     return this.read2(parseSig(sig));
   }

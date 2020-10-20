@@ -1,5 +1,4 @@
 import { DBusValue } from "./dbus_types.ts";
-import { Endianness } from "./util/encoding.ts";
 
 /** See https://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol. */
 export enum MessageType {
@@ -29,11 +28,43 @@ export enum HeaderField {
   UNIX_FDS = 9,
 }
 
-export type RawMessage = {
-  endianness: Endianness;
-  messageType: MessageType;
-  flags: HeaderFlags;
-  serial: number;
-  fields: Map<HeaderField, DBusValue>;
-  body: unknown[];
+export class Message<T extends MessageType = MessageType> {
+  flags: HeaderFlags = 0;
+  fields: Map<HeaderField, DBusValue> = new Map();
+  body: unknown[] = [];
+
+  constructor(public type: T) {}
+
+  static methodCall(opts: MethodCallOpts): MethodCall {
+    const m = new Message(MessageType.METHOD_CALL);
+    if (opts.destination !== undefined) {
+      m.fields.set(
+        HeaderField.DESTINATION,
+        { sig: "s", value: opts.destination },
+      );
+    }
+    m.fields.set(HeaderField.PATH, { sig: "o", value: opts.path });
+    if (opts.interface !== undefined) {
+      m.fields.set(HeaderField.INTERFACE, { sig: "s", value: opts.interface });
+    }
+    m.fields.set(HeaderField.MEMBER, { sig: "s", value: opts.member });
+    if (opts.body !== undefined) {
+      m.fields.set(HeaderField.SIGNATURE, { sig: "g", value: opts.body.sig });
+      m.body = opts.body.values;
+    }
+    return m;
+  }
+}
+
+export type MethodCall = Message<MessageType.METHOD_CALL>;
+export type MethodReturn = Message<MessageType.METHOD_RETURN>;
+export type ErrorMsg = Message<MessageType.ERROR>;
+export type Signal = Message<MessageType.SIGNAL>;
+
+export type MethodCallOpts = {
+  destination?: string;
+  path: string;
+  interface?: string;
+  member: string;
+  body?: { sig: string, values: unknown[] };
 };

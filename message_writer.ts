@@ -1,5 +1,4 @@
 import { charCode } from "https://deno.land/std@0.74.0/io/util.ts";
-import { BufWriterSync } from "https://deno.land/std@0.74.0/io/bufio.ts";
 import {
   DBusType2,
   DBusValue,
@@ -11,7 +10,7 @@ import {
   StringTypeSig,
   validateFixed,
 } from "./dbus_types.ts";
-import { HeaderField, MessageType, RawMessage } from "./message.ts";
+import { HeaderField, Message } from "./message.ts";
 import { parseSig, parseSigs } from "./sig_parser.ts";
 import { assertExhaustive } from "./util/assert.ts";
 import { encodeUtf8, Endianness, nativeEndian } from "./util/encoding.ts";
@@ -38,20 +37,25 @@ export class MessageWriter {
     readonly endianness: Endianness = nativeEndian(),
   ) {}
 
-  static encode(msg: RawMessage): Deno.Buffer {
+  static encode(
+    msg: Message,
+    serial: number,
+    endianness: Endianness,
+  ): Deno.Buffer {
     const buf = new Deno.Buffer();
-    const w = new MessageWriter(buf, msg.endianness);
+    const w = new MessageWriter(buf, endianness);
 
     // TODO(solson): Validate that it's actually a string.
     const sig = msg.fields.get(HeaderField.SIGNATURE)?.value as string ?? "";
 
-    // TODO(solson): Validate messageType, flags, and fields.
-    w.write("y", encodeEndianess(msg.endianness));
-    w.write("y", msg.messageType);
+    // TODO(solson): Validate messageType, flags, fields, and (non-zero) serial.
+    // TODO(solson): Validate that INTERFACE is not org.freedesktop.DBus.Local.
+    w.write("y", encodeEndianess(endianness));
+    w.write("y", msg.type);
     w.write("y", msg.flags);
     w.write("y", 1); // major protocol version
     const writeBodyLen = w.writeLater("u");
-    w.write("u", msg.serial);
+    w.write("u", serial);
     w.write("a(yv)", Array.from(msg.fields));
     w.writePadding(8);
 
