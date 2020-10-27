@@ -8,10 +8,19 @@ import {
   FixedTypeVal,
   isFixedTypeSig,
   isStringTypeSig,
-  StringTypeSig,
+  StringTypeSig
 } from "./dbus_types.ts";
 import { ProtocolError } from "./errors.ts";
-import { HeaderField, Message } from "./message.ts";
+import {
+  ErrorMsg,
+  HeaderField,
+  Message,
+  MessageType,
+  MethodCall,
+  MethodReturn,
+  Signal,
+  UnknownMessage
+} from "./message.ts";
 import { parseSig, parseSigs } from "./sig_parser.ts";
 import { assertExhaustive } from "./util/assert.ts";
 import { decodeUtf8, Endianness } from "./util/encoding.ts";
@@ -31,13 +40,11 @@ export class MessageReader {
 
   static async read(
     reader: Deno.Reader,
-  ): Promise<{ msg: Message; serial: number }> {
+  ): Promise<{ msg: Message; serial: number, sender: string }> {
     const r = new MessageReader(reader);
-    const endianness = await r.readEndianness();
+    await r.readEndianness();
     const type = await r.readFixed("y");
-
-    const msg = new Message(type);
-    msg.flags = await r.readFixed("y");
+    const flags = await r.readFixed("y");
 
     const majorProtocolVersion = await r.readFixed("y");
     if (majorProtocolVersion !== 1) {
@@ -50,11 +57,55 @@ export class MessageReader {
     // TODO(solson): Validate that serial is non-zero.
     const serial = await r.readFixed("u");
     // TODO(solson): Detect duplicate keys.
-    msg.fields = new Map(await r.read("a(yv)") as [number, DBusValue][]);
+    const fields = new Map(await r.read("a(yv)") as [number, DBusValue][]);
     await r.skipPadding(8);
-    const sig = msg.fields.get(HeaderField.SIGNATURE)?.value as string ?? "";
-    msg.body = await r.readMany(sig);
-    return { msg, serial };
+    const sig = fields.get(HeaderField.SIGNATURE)?.value as string ?? "";
+    const body = await r.readMany(sig);
+
+    // TODO(solson): Extract to static method on Message.
+    // TODO(solson): Check for required field presence.
+    // TODO(solson): Capture flags and extra fields.
+    let msg: Message;
+    switch (type) {
+      case MessageType.METHOD_CALL:
+        msg = new MethodCall(
+          fields.get(HeaderField.DESTINATION)?.value as string,
+          fields.get(HeaderField.PATH)?.value as string,
+          fields.get(HeaderField.INTERFACE)?.value as string,
+          fields.get(HeaderField.MEMBER)?.value as string,
+          { sig, values: body },
+        );
+        break;
+      case MessageType.METHOD_RETURN:
+        msg = new MethodReturn(
+          fields.get(HeaderField.DESTINATION)?.value as string,
+          fields.get(HeaderField.REPLY_SERIAL)?.value as number,
+          { sig, values: body },
+        );
+        break;
+      case MessageType.ERROR:
+        msg = new ErrorMsg(
+          fields.get(HeaderField.DESTINATION)?.value as string,
+          fields.get(HeaderField.ERROR_NAME)?.value as string,
+          fields.get(HeaderField.REPLY_SERIAL)?.value as number,
+          { sig, values: body },
+        );
+        break;
+      case MessageType.SIGNAL:
+        msg = new Signal(
+          fields.get(HeaderField.DESTINATION)?.value as string,
+          fields.get(HeaderField.PATH)?.value as string,
+          fields.get(HeaderField.INTERFACE)?.value as string,
+          fields.get(HeaderField.MEMBER)?.value as string,
+          { sig, values: body },
+        );
+        break;
+      default:
+        msg = new UnknownMessage({ type, flags, fields, body });
+    }
+
+    const sender = fields.get(HeaderField.SENDER)?.value as string;
+    return { msg, serial, sender };
   }
 
   // TODO(solson): Finish the `limit` work.

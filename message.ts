@@ -28,43 +28,185 @@ export enum HeaderField {
   UNIX_FDS = 9,
 }
 
-export class Message<T extends MessageType = MessageType> {
-  flags: HeaderFlags = 0;
-  fields: Map<HeaderField, DBusValue> = new Map();
-  body: unknown[] = [];
+export const headerFieldTypes = {
+  [HeaderField.PATH]: "o",
+  [HeaderField.INTERFACE]: "s",
+  [HeaderField.MEMBER]: "s",
+  [HeaderField.ERROR_NAME]: "s",
+  [HeaderField.REPLY_SERIAL]: "u",
+  [HeaderField.DESTINATION]: "s",
+  [HeaderField.SENDER]: "s",
+  [HeaderField.SIGNATURE]: "g",
+  [HeaderField.UNIX_FDS]: "u",
+} as const;
 
-  constructor(public type: T) {}
+export interface RawMessage {
+  type: number;
+  flags: number;
+  fields: Map<number, DBusValue>;
+  body: unknown[];
+}
 
-  static methodCall(opts: MethodCallOpts): MethodCall {
-    const m = new Message(MessageType.METHOD_CALL);
-    if (opts.destination !== undefined) {
-      m.fields.set(
-        HeaderField.DESTINATION,
-        { sig: "s", value: opts.destination },
-      );
-    }
-    m.fields.set(HeaderField.PATH, { sig: "o", value: opts.path });
-    if (opts.interface !== undefined) {
-      m.fields.set(HeaderField.INTERFACE, { sig: "s", value: opts.interface });
-    }
-    m.fields.set(HeaderField.MEMBER, { sig: "s", value: opts.member });
-    if (opts.body !== undefined) {
-      m.fields.set(HeaderField.SIGNATURE, { sig: "g", value: opts.body.sig });
-      m.body = opts.body.values;
-    }
-    return m;
+export interface MessageOps {
+  toRaw(): RawMessage;
+}
+
+export class UnknownMessage implements MessageOps {
+  constructor(public raw: RawMessage) {}
+  toRaw() {
+    return this.raw;
   }
 }
 
-export type MethodCall = Message<MessageType.METHOD_CALL>;
-export type MethodReturn = Message<MessageType.METHOD_RETURN>;
-export type ErrorMsg = Message<MessageType.ERROR>;
-export type Signal = Message<MessageType.SIGNAL>;
+export class MethodCall implements MessageOps {
+  // extraFlags = 0;
+  // extraFields: Map<number, DBusValue> = new Map();
 
-export type MethodCallOpts = {
-  destination?: string;
-  path: string;
-  interface?: string;
-  member: string;
-  body?: { sig: string, values: unknown[] };
-};
+  constructor(
+    public destination: string | undefined,
+    public path: string,
+    public interface_: string | undefined,
+    public member: string,
+    public body?: { sig: string; values: unknown[] },
+  ) {}
+
+  toRaw(): RawMessage {
+    const fields = new Map<number, DBusValue>();
+    let body: unknown[] = [];
+
+    if (this.destination !== undefined) {
+      fields.set(HeaderField.DESTINATION, {
+        sig: "s",
+        value: this.destination,
+      });
+    }
+
+    fields.set(HeaderField.PATH, { sig: "o", value: this.path });
+
+    if (this.interface_ !== undefined) {
+      fields.set(HeaderField.INTERFACE, { sig: "s", value: this.interface_ });
+    }
+
+    fields.set(HeaderField.MEMBER, { sig: "s", value: this.member });
+
+    if (this.body !== undefined) {
+      fields.set(HeaderField.SIGNATURE, { sig: "g", value: this.body.sig });
+      body = this.body.values;
+    }
+
+    // TODO(solson): Use extraFields and extraFlags.
+    return { type: MessageType.METHOD_CALL, flags: 0, fields, body };
+  }
+}
+
+export class MethodReturn implements MessageOps {
+  // extraFlags = 0;
+  // extraFields: Map<number, DBusValue> = new Map();
+
+  constructor(
+    public destination: string | undefined,
+    public replySerial: number,
+    public body?: { sig: string; values: unknown[] },
+  ) {}
+
+  toRaw(): RawMessage {
+    const fields = new Map<number, DBusValue>();
+    let body: unknown[] = [];
+
+    if (this.destination !== undefined) {
+      fields.set(HeaderField.DESTINATION, {
+        sig: "s",
+        value: this.destination,
+      });
+    }
+
+    fields.set(HeaderField.REPLY_SERIAL, { sig: "u", value: this.replySerial });
+
+    if (this.body !== undefined) {
+      fields.set(HeaderField.SIGNATURE, { sig: "g", value: this.body.sig });
+      body = this.body.values;
+    }
+
+    // TODO(solson): Use extraFields and extraFlags.
+    return { type: MessageType.METHOD_RETURN, flags: 0, fields, body };
+  }
+}
+
+export class ErrorMsg implements MessageOps {
+  // extraFlags = 0;
+  // extraFields: Map<number, DBusValue> = new Map();
+
+  constructor(
+    public destination: string | undefined,
+    public errorName: string,
+    public replySerial: number,
+    public body?: { sig: string; values: unknown[] },
+  ) {}
+
+  toRaw(): RawMessage {
+    const fields = new Map<number, DBusValue>();
+    let body: unknown[] = [];
+
+    if (this.destination !== undefined) {
+      fields.set(HeaderField.DESTINATION, {
+        sig: "s",
+        value: this.destination,
+      });
+    }
+
+    fields.set(HeaderField.ERROR_NAME, { sig: "s", value: this.errorName });
+    fields.set(HeaderField.REPLY_SERIAL, { sig: "u", value: this.replySerial });
+
+    if (this.body !== undefined) {
+      fields.set(HeaderField.SIGNATURE, { sig: "g", value: this.body.sig });
+      body = this.body.values;
+    }
+
+    // TODO(solson): Use extraFields and extraFlags.
+    return { type: MessageType.ERROR, flags: 0, fields, body };
+  }
+}
+
+export class Signal implements MessageOps {
+  // extraFlags = 0;
+  // extraFields: Map<number, DBusValue> = new Map();
+
+  constructor(
+    public destination: string | undefined,
+    public path: string,
+    public interface_: string,
+    public member: string,
+    public body?: { sig: string; values: unknown[] },
+  ) {}
+
+  toRaw(): RawMessage {
+    const fields = new Map<number, DBusValue>();
+    let body: unknown[] = [];
+
+    if (this.destination !== undefined) {
+      fields.set(HeaderField.DESTINATION, {
+        sig: "s",
+        value: this.destination,
+      });
+    }
+
+    fields.set(HeaderField.PATH, { sig: "o", value: this.path });
+    fields.set(HeaderField.INTERFACE, { sig: "s", value: this.interface_ });
+    fields.set(HeaderField.MEMBER, { sig: "s", value: this.member });
+
+    if (this.body !== undefined) {
+      fields.set(HeaderField.SIGNATURE, { sig: "g", value: this.body.sig });
+      body = this.body.values;
+    }
+
+    // TODO(solson): Use extraFields and extraFlags.
+    return { type: MessageType.SIGNAL, flags: 0, fields, body };
+  }
+}
+
+export type Message =
+  | UnknownMessage
+  | MethodCall
+  | MethodReturn
+  | ErrorMsg
+  | Signal;

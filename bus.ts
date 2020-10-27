@@ -1,8 +1,9 @@
 import { BufReader } from "https://deno.land/std@0.74.0/io/bufio.ts";
 import { join } from "https://deno.land/std@0.74.0/path/mod.ts";
-import { Message } from "./message.ts";
+import { HeaderField, Message, MessageType, MethodCall } from "./message.ts";
 import { MessageReader } from "./message_reader.ts";
 import { MessageWriter } from "./message_writer.ts";
+import { todo } from "./util/assert.ts";
 import { encodeUtf8, Endianness, nativeEndian } from "./util/encoding.ts";
 
 export function getSessionBusAddr(): string {
@@ -102,12 +103,13 @@ export class Bus {
   }
 
   private async hello(): Promise<void> {
-    const serial = await this.send(Message.methodCall({
-      destination: "org.freedesktop.DBus",
-      path: "/org/freedesktop/DBus",
-      interface: "org.freedesktop.DBus",
-      member: "Hello",
-    }));
+    const msg = new MethodCall(
+      "org.freedesktop.DBus",
+      "/org/freedesktop/DBus",
+      "org.freedesktop.DBus",
+      "Hello",
+    );
+    const serial = await this.send(msg);
     this.replyCallbacks.set(serial, (reply) => {
       // TODO(solson): Set up event loop reply handler.
       console.log("\nhello reply: %o", reply);
@@ -116,17 +118,23 @@ export class Bus {
 
   async send(msg: Message): Promise<number> {
     const serial = this.nextSerial();
-    console.log("\nSENDING: %o", msg);
+    console.log("\nSENDING(%i): %o", serial, msg);
     const buf = MessageWriter.encode(msg, serial, this.endianness);
     await Deno.copy(buf, this.conn);
     return serial;
   }
 
-  async *incoming(): AsyncGenerator<
-    { msg: Message; serial: number },
-    never,
+  async *events(): AsyncGenerator<
+    { msg: Message; serial: number, sender: string },
+    undefined,
     undefined
   > {
-    while (true) yield MessageReader.read(this.conn);
+    while (true) {
+      const m = await MessageReader.read(this.conn);
+      // if (msg instanceof MethodReturn) {
+      //   const replySerial = msg.toRaw().fields.get(HeaderField.REPLY_SERIAL)?.value;
+      // }
+      yield m;
+    }
   }
 }

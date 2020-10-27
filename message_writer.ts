@@ -42,24 +42,25 @@ export class MessageWriter {
     serial: number,
     endianness: Endianness,
   ): Deno.Buffer {
+    const raw = msg.toRaw();
     const buf = new Deno.Buffer();
     const w = new MessageWriter(buf, endianness);
 
     // TODO(solson): Validate that it's actually a string.
-    const sig = msg.fields.get(HeaderField.SIGNATURE)?.value as string ?? "";
+    const sig = raw.fields.get(HeaderField.SIGNATURE)?.value as string ?? "";
 
     // TODO(solson): Validate messageType, flags, fields, and (non-zero) serial.
     // TODO(solson): Validate that INTERFACE is not org.freedesktop.DBus.Local.
     w.write("y", encodeEndianess(endianness));
-    w.write("y", msg.type);
-    w.write("y", msg.flags);
+    w.write("y", raw.type);
+    w.write("y", raw.flags);
     w.write("y", 1); // major protocol version
     const writeBodyLen = w.writeLater("u");
     w.write("u", serial);
-    w.write("a(yv)", Array.from(msg.fields));
+    w.write("a(yv)", Array.from(raw.fields));
     w.writePadding(8);
 
-    writeBodyLen(w.measureLength(() => w.writeMany(sig, ...msg.body)));
+    writeBodyLen(w.measureLength(() => w.writeMany(sig, ...raw.body)));
 
     return buf;
   }
