@@ -1,9 +1,8 @@
 import { BufReader } from "https://deno.land/std@0.74.0/io/bufio.ts";
 import { join } from "https://deno.land/std@0.74.0/path/mod.ts";
-import { HeaderField, Message, MessageType, MethodCall } from "./message.ts";
+import { ErrorMsg, Message, MethodCall, MethodReturn } from "./message.ts";
 import { MessageReader } from "./message_reader.ts";
 import { MessageWriter } from "./message_writer.ts";
-import { todo } from "./util/assert.ts";
 import { encodeUtf8, Endianness, nativeEndian } from "./util/encoding.ts";
 
 export function getSessionBusAddr(): string {
@@ -27,17 +26,25 @@ export type ConnectionOptions = {
   endianness?: Endianness;
 };
 
+export type LabeledMessage = { msg: Message; serial: number; sender: string };
+
+type ReplyCallbacks = {
+  resolve: (m: LabeledMessage) => void;
+  reject: (m: LabeledMessage) => void;
+};
+
 let sessionBus: Bus | undefined = undefined;
 
 export class Bus {
   #nextSerial = 1;
   #conn: Deno.Conn | undefined;
+  #readLoop: Promise<never> | undefined;
+  #replyCallbacks: Map<number, ReplyCallbacks> = new Map();
 
   readonly addr: Addr;
   readonly name: string;
   readonly endianness: Endianness;
   readonly uniqueName: string | undefined;
-  private replyCallbacks: Map<number, (m: Message) => void> = new Map();
 
   private get conn(): Deno.Conn {
     if (this.#conn === undefined) {
@@ -71,6 +78,7 @@ export class Bus {
     }
     await this.connect();
     await this.authenticate();
+    this.#readLoop = this.readLoop();
     await this.hello();
   }
 
@@ -83,6 +91,10 @@ export class Bus {
       // TODO(solson): We should actually parse bus addresses.
       path: this.addr.slice(10),
     });
+  }
+
+  close() {
+    this.#conn?.close();
   }
 
   private async authenticate(): Promise<void> {
@@ -103,17 +115,13 @@ export class Bus {
   }
 
   private async hello(): Promise<void> {
-    const msg = new MethodCall(
+    const { msg, serial, sender } = await this.methodCall(
       "org.freedesktop.DBus",
       "/org/freedesktop/DBus",
       "org.freedesktop.DBus",
       "Hello",
     );
-    const serial = await this.send(msg);
-    this.replyCallbacks.set(serial, (reply) => {
-      // TODO(solson): Set up event loop reply handler.
-      console.log("\nhello reply: %o", reply);
-    });
+    console.log("\nHello() reply\nRECEIVING(%s/%i): %o", sender, serial, msg);
   }
 
   async send(msg: Message): Promise<number> {
@@ -124,17 +132,44 @@ export class Bus {
     return serial;
   }
 
-  async *events(): AsyncGenerator<
-    { msg: Message; serial: number, sender: string },
-    undefined,
-    undefined
-  > {
+  async methodCall(
+    destination: string | undefined,
+    path: string,
+    interface_: string | undefined,
+    member: string,
+    body?: { sig: string, values: unknown[] },
+  ): Promise<LabeledMessage> {
+    const msg = new MethodCall(destination, path, interface_, member, body);
+    const serial = await this.send(msg);
+    const reply = new Promise<LabeledMessage>((resolve, reject) => {
+      this.#replyCallbacks.set(serial, { resolve, reject });
+    });
+
+    // TODO(solson): Remove the `!`
+    return Promise.race([this.#readLoop!, reply]);
+  }
+
+  private async readLoop(): Promise<never> {
     while (true) {
-      const m = await MessageReader.read(this.conn);
-      // if (msg instanceof MethodReturn) {
-      //   const replySerial = msg.toRaw().fields.get(HeaderField.REPLY_SERIAL)?.value;
-      // }
-      yield m;
+      const { msg, sender, serial } = await MessageReader.read(this.conn);
+      if (msg instanceof MethodReturn || msg instanceof ErrorMsg) {
+        const callbacks = this.#replyCallbacks.get(msg.replySerial);
+        if (callbacks !== undefined) {
+          this.#replyCallbacks.delete(msg.replySerial);
+          const { resolve, reject } = callbacks;
+          if (msg instanceof MethodReturn) resolve({ msg, sender, serial });
+          if (msg instanceof ErrorMsg) reject({ msg, sender, serial });
+        } else {
+          console.log(
+            "\nunhandled reply\nRECEIVING(%s/%i): %o",
+            sender,
+            serial,
+            msg,
+          );
+        }
+      } else {
+        console.log("\nunhandled\nRECEIVING(%s/%i): %o", sender, serial, msg);
+      }
     }
   }
 }

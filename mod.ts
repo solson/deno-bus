@@ -1,8 +1,8 @@
 import { Bus } from "./bus.ts";
-import { MethodCall, MethodReturn } from "./message.ts";
-import { inspect } from "./util/debug.ts";
 
-const notifyMsg = new MethodCall(
+const bus = await Bus.session();
+
+const { msg, sender, serial } = await bus.methodCall(
   "org.freedesktop.Notifications",
   "/org/freedesktop/Notifications",
   "org.freedesktop.Notifications",
@@ -13,12 +13,6 @@ const notifyMsg = new MethodCall(
   },
 );
 
-const bus = await Bus.session();
-const notifySerial = await bus.send(notifyMsg);
+console.log("\nNotify() reply\nRECEIVING(%s/%i): %o", sender, serial, msg);
 
-for await (const { msg, serial, sender } of bus.events()) {
-  console.log("\nRECEIVING(%s/%i): %s", sender, serial, inspect(msg));
-  if (msg instanceof MethodReturn && msg.replySerial === notifySerial) {
-    console.log("^ got Notify reply");
-  }
-}
+bus.close();
