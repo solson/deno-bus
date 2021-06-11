@@ -1,5 +1,6 @@
-import { BufReader } from "https://deno.land/std@0.74.0/io/bufio.ts";
-import { join } from "https://deno.land/std@0.74.0/path/mod.ts";
+import { BufReader } from "https://deno.land/std@0.97.0/io/bufio.ts";
+import { join } from "https://deno.land/std@0.97.0/path/mod.ts";
+import { writeAll } from "https://deno.land/std@0.97.0/io/util.ts";
 import { ErrorMsg, Message, MethodCall, MethodReturn } from "./message.ts";
 import { MessageReader } from "./message_reader.ts";
 import { MessageWriter } from "./message_writer.ts";
@@ -98,7 +99,7 @@ export class Bus {
   }
 
   private async authenticate(): Promise<void> {
-    await Deno.writeAll(
+    await writeAll(
       this.conn,
       // TODO(solson): Figure out reliable way to authenticate.
       // libdbus, gdbus, qdbus, python-dbus:
@@ -137,7 +138,7 @@ export class Bus {
     path: string,
     interface_: string | undefined,
     member: string,
-    body?: { sig: string, values: unknown[] },
+    body?: { sig: string; values: unknown[] },
   ): Promise<LabeledMessage> {
     const msg = new MethodCall(destination, path, interface_, member, body);
     const serial = await this.send(msg);

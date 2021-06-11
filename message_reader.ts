@@ -1,4 +1,3 @@
-import { charCode } from "https://deno.land/std@0.74.0/io/util.ts";
 import {
   DBusType2,
   DBusValue,
@@ -8,7 +7,7 @@ import {
   FixedTypeVal,
   isFixedTypeSig,
   isStringTypeSig,
-  StringTypeSig
+  StringTypeSig,
 } from "./dbus_types.ts";
 import { ProtocolError } from "./errors.ts";
 import {
@@ -19,12 +18,17 @@ import {
   MethodCall,
   MethodReturn,
   Signal,
-  UnknownMessage
+  UnknownMessage,
 } from "./message.ts";
 import { parseSig, parseSigs } from "./sig_parser.ts";
 import { assertExhaustive } from "./util/assert.ts";
 import { decodeUtf8, Endianness } from "./util/encoding.ts";
 import { readNBytes } from "./util/io.ts";
+
+// TODO(solson): Move to ./util
+function charCode(s: string): number {
+  return s.charCodeAt(0);
+}
 
 export function decodeEndianness(flag: number): Endianness | undefined {
   if (flag === charCode("l")) return Endianness.LE;
@@ -40,7 +44,7 @@ export class MessageReader {
 
   static async read(
     reader: Deno.Reader,
-  ): Promise<{ msg: Message; serial: number, sender: string }> {
+  ): Promise<{ msg: Message; serial: number; sender: string }> {
     const r = new MessageReader(reader);
     await r.readEndianness();
     const type = await r.readFixed("y");
@@ -53,6 +57,7 @@ export class MessageReader {
       );
     }
 
+    // TODO(solson): Actually use bodyLen to verify/limit total length.
     const bodyLen = await r.readFixed("u");
     // TODO(solson): Validate that serial is non-zero.
     const serial = await r.readFixed("u");
@@ -109,7 +114,7 @@ export class MessageReader {
   }
 
   // TODO(solson): Finish the `limit` work.
-  async read(sig: string, limit?: number): Promise<unknown> {
+  read(sig: string, _limit?: number): Promise<unknown> {
     return this.read2(parseSig(sig));
   }
 

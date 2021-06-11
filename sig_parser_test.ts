@@ -2,7 +2,7 @@ import { parseSig, parseSigs } from "./sig_parser.ts";
 import {
   assertEquals,
   assertThrows,
-} from "https://deno.land/std@0.74.0/testing/asserts.ts";
+} from "https://deno.land/std@0.97.0/testing/asserts.ts";
 import type { DBusType2 } from "./dbus_types.ts";
 
 function byte(): DBusType2 {

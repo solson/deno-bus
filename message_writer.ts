@@ -1,4 +1,3 @@
-import { charCode } from "https://deno.land/std@0.74.0/io/util.ts";
 import {
   DBusType2,
   DBusValue,
@@ -14,6 +13,11 @@ import { HeaderField, Message } from "./message.ts";
 import { parseSig, parseSigs } from "./sig_parser.ts";
 import { assertExhaustive } from "./util/assert.ts";
 import { encodeUtf8, Endianness, nativeEndian } from "./util/encoding.ts";
+
+// TODO(solson): Move to ./util
+function charCode(s: string): number {
+  return s.charCodeAt(0);
+}
 
 export function encodeEndianess(e: Endianness): number {
   if (e === Endianness.LE) return charCode("l");
@@ -37,6 +41,7 @@ export class MessageWriter {
     readonly endianness: Endianness = nativeEndian(),
   ) {}
 
+  // TODO(solson): Deno.Buffer is deprecated, so figure out the replacement.
   static encode(
     msg: Message,
     serial: number,
