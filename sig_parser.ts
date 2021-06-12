@@ -1,29 +1,35 @@
 import { DBusType2, isFixedTypeSig, isStringTypeSig } from "./dbus_types.ts";
 
 class SigParser {
-  constructor(private src: string, private pos: number = 0) {}
+  #src: string;
+  #pos: number;
+
+  constructor(src: string, pos: number = 0) {
+    this.#src = src;
+    this.#pos = pos;
+  }
 
   parseSig(): DBusType2 {
-    const sig = this.parseNextSig();
-    if (this.pos !== this.src.length) {
+    const sig = this.#parseNextSig();
+    if (this.#pos !== this.#src.length) {
       throw new RangeError(
-        `unexpected trailing characters '${this.src.slice(this.pos)}'`,
+        `unexpected trailing characters '${this.#src.slice(this.#pos)}'`,
       );
     }
     return sig;
   }
 
   parseSigs(): DBusType2[] {
-    return this.parseSigsUntil("");
+    return this.#parseSigsUntil("");
   }
 
-  private parseNextSig(): DBusType2 {
-    const c = this.next();
+  #parseNextSig(): DBusType2 {
+    const c = this.#next();
     if (isFixedTypeSig(c) || isStringTypeSig(c) || c === "v") {
       return { type: c };
-    } else if (c === "a" && this.peek() === "{") {
-      this.pos++;
-      const types = this.parseSigsUntil("}");
+    } else if (c === "a" && this.#peek() === "{") {
+      this.#pos++;
+      const types = this.#parseSigsUntil("}");
       if (types.length !== 2) {
         throw new RangeError(
           `expected 2 signatures in dictionary, got ${types.length}`,
@@ -32,10 +38,10 @@ class SigParser {
       // TODO(solson): Check that keyType is a basic type.
       return { type: "e", keyType: types[0], valueType: types[1] };
     } else if (c === "a") {
-      const elemType = this.parseNextSig();
+      const elemType = this.#parseNextSig();
       return { type: "a", elemType };
     } else if (c === "(") {
-      const fieldTypes = this.parseSigsUntil(")");
+      const fieldTypes = this.#parseSigsUntil(")");
       return { type: "r", fieldTypes };
     } else if (c === "{") {
       throw new RangeError("unknown type '{' (did you mean 'a{'?)");
@@ -44,21 +50,21 @@ class SigParser {
     }
   }
 
-  private parseSigsUntil(end: string): DBusType2[] {
+  #parseSigsUntil(end: string): DBusType2[] {
     const types: DBusType2[] = [];
-    while (this.peek() !== end) {
-      types.push(this.parseNextSig());
+    while (this.#peek() !== end) {
+      types.push(this.#parseNextSig());
     }
-    this.pos++;
+    this.#pos++;
     return types;
   }
 
-  private next(): string {
-    return this.src.charAt(this.pos++);
+  #next(): string {
+    return this.#src.charAt(this.#pos++);
   }
 
-  private peek(): string {
-    return this.src.charAt(this.pos);
+  #peek(): string {
+    return this.#src.charAt(this.#pos);
   }
 }
 

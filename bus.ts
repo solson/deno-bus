@@ -41,8 +41,8 @@ type ReplyCallbacks = {
 let sessionBus: Bus | undefined = undefined;
 
 export class Bus {
-  #nextSerial = 1;
-  #conn: Deno.Conn | undefined;
+  #nextSerial_ = 1;
+  #conn_: Deno.Conn | undefined;
   #readLoop: Promise<never> | undefined;
   #replyCallbacks: Map<number, ReplyCallbacks> = new Map();
 
@@ -51,16 +51,16 @@ export class Bus {
   readonly endianness: Endianness;
   readonly uniqueName: string | undefined;
 
-  private get conn(): Deno.Conn {
-    if (this.#conn === undefined) {
+  get #conn(): Deno.Conn {
+    if (this.#conn_ === undefined) {
       throw new Error(`DBus connection '${this.name}' is not started yet`);
     }
-    return this.#conn;
+    return this.#conn_;
   }
 
-  private nextSerial(): number {
+  #nextSerial(): number {
     // TODO(solson): Handle overflow.
-    return this.#nextSerial++;
+    return this.#nextSerial_++;
   }
 
   constructor(opts: ConnectionOptions) {
@@ -78,20 +78,20 @@ export class Bus {
   }
 
   async start(): Promise<void> {
-    if (this.#conn !== undefined) {
+    if (this.#conn_ !== undefined) {
       throw new Error(`DBus connection '${this.name}' already started`);
     }
-    await this.connect();
-    await this.authenticate();
-    this.#readLoop = this.readLoop();
-    await this.hello();
+    await this.#connect();
+    await this.#authenticate();
+    this.#readLoop = this.#readLoopImpl();
+    await this.#hello();
   }
 
-  private async connect(): Promise<void> {
+  async #connect(): Promise<void> {
     if (!this.addr.startsWith("unix:path=")) {
       throw new Error(`Cannot handle DBus addres ${this.addr}`);
     }
-    this.#conn = await Deno.connect({
+    this.#conn_ = await Deno.connect({
       transport: "unix",
       // TODO(solson): We should actually parse bus addresses.
       path: this.addr.slice(10),
@@ -99,12 +99,12 @@ export class Bus {
   }
 
   close() {
-    this.#conn?.close();
+    this.#conn_?.close();
   }
 
-  private async authenticate(): Promise<void> {
+  async #authenticate(): Promise<void> {
     await writeAll(
-      this.conn,
+      this.#conn,
       // TODO(solson): Figure out reliable way to authenticate.
       // libdbus, gdbus, qdbus, python-dbus:
       encodeUtf8("\0AUTH EXTERNAL 31303030\r\nBEGIN\r\n"),
@@ -113,13 +113,13 @@ export class Bus {
     );
 
     // TODO(solson): Actually parse and validate SASL response.
-    const response = await BufReader.create(this.conn).readString("\n");
+    const response = await BufReader.create(this.#conn).readString("\n");
     if (response === null) throw new Error("no auth response from server");
     if (!response.startsWith("OK ")) throw new Error("authentication error");
     console.log(`server auth response: ${response.trimEnd()}`);
   }
 
-  private async hello(): Promise<void> {
+  async #hello(): Promise<void> {
     const { msg, serial, sender } = await this.methodCall(
       "org.freedesktop.DBus",
       "/org/freedesktop/DBus",
@@ -130,10 +130,10 @@ export class Bus {
   }
 
   async send(msg: Message): Promise<number> {
-    const serial = this.nextSerial();
+    const serial = this.#nextSerial();
     console.log("\nSENDING(%i): %o", serial, msg);
     const buf = MessageWriter.encode(msg, serial, this.endianness);
-    await Deno.copy(buf, this.conn);
+    await Deno.copy(buf, this.#conn);
     return serial;
   }
 
@@ -154,9 +154,9 @@ export class Bus {
     return Promise.race([this.#readLoop!, reply]);
   }
 
-  private async readLoop(): Promise<never> {
+  async #readLoopImpl(): Promise<never> {
     while (true) {
-      const { msg, sender, serial } = await MessageReader.read(this.conn);
+      const { msg, sender, serial } = await MessageReader.read(this.#conn);
       if (msg instanceof MethodReturn || msg instanceof ErrorMsg) {
         const callbacks = this.#replyCallbacks.get(msg.replySerial);
         if (callbacks !== undefined) {

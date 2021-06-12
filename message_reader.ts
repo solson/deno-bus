@@ -38,10 +38,13 @@ export function decodeEndianness(flag: number): Endianness | undefined {
 
 /** See https://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-marshaling. */
 export class MessageReader {
-  private pos = 0;
+  #reader: Deno.Reader;
+  #pos = 0;
   #endianness: Endianness | undefined;
 
-  constructor(private reader: Deno.Reader) {}
+  constructor(reader: Deno.Reader) {
+    this.#reader = reader;
+  }
 
   static async read(reader: Deno.Reader): Promise<LabeledMessage> {
     const r = new MessageReader(reader);
@@ -151,9 +154,9 @@ export class MessageReader {
       }
 
       // TODO(solson): Check for reads past endPos.
-      const endPos = this.pos + length;
+      const endPos = this.#pos + length;
       const elems = [];
-      while (this.pos < endPos) {
+      while (this.#pos < endPos) {
         elems.push(await this.read2(t.elemType));
       }
       return elems;
@@ -172,9 +175,9 @@ export class MessageReader {
       this.skipPadding(8);
 
       // TODO(solson): Check for reads past endPos.
-      const endPos = this.pos + length;
+      const endPos = this.#pos + length;
       const map = new Map<unknown, unknown>();
-      while (this.pos < endPos) {
+      while (this.#pos < endPos) {
         const key = await this.read2(t.keyType);
         const value = await this.read2(t.valueType);
         // TODO(solson): Check for duplicate keys.
@@ -268,14 +271,14 @@ export class MessageReader {
   }
 
   async readRawBytes(n: number): Promise<Uint8Array> {
-    const bytes = await readNBytes(this.reader, n);
-    this.pos += n;
+    const bytes = await readNBytes(this.#reader, n);
+    this.#pos += n;
     return bytes;
   }
 
   async skipPadding(alignment: number): Promise<void> {
-    if (this.pos % alignment === 0) return;
-    const padding = alignment - this.pos % alignment;
+    if (this.#pos % alignment === 0) return;
+    const padding = alignment - this.#pos % alignment;
     // TODO(solson): Assert all padding is zeroed.
     await this.readRawBytes(padding);
   }

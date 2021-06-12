@@ -29,19 +29,22 @@ export function encodeEndianess(e: Endianness): number {
 
 /** See https://dbus.freedesktop.org/doc/dbus-specification.html#message-protocol-marshaling. */
 export class MessageWriter {
+  #buf: Buffer;
+  readonly endianness: Endianness;
+
   /** Current position within the message, for use in alignment padding. */
-  private pos = 0;
+  #pos = 0;
 
   /**
    * Set of positions associated with `writeLater` calls that have yet to be
    * filled in with values.
    */
-  private writeLaterPositions = new Set();
+  #writeLaterPositions = new Set();
 
-  constructor(
-    private buf: Buffer,
-    readonly endianness: Endianness = nativeEndian(),
-  ) {}
+  constructor(buf: Buffer, endianness: Endianness = nativeEndian()) {
+    this.#buf = buf;
+    this.endianness = endianness;
+  }
 
   static encode(
     msg: Message,
@@ -173,7 +176,7 @@ export class MessageWriter {
     // multiple of its size (counting from the start of the current message).
     this.writePadding(size);
 
-    const pos = this.pos;
+    const pos = this.#pos;
     this.writeRawBytes(bytes);
     return pos;
   }
@@ -181,7 +184,7 @@ export class MessageWriter {
   writeFixedAt(pos: number, v: FixedTypeUnknown): void {
     validateFixed(v);
     const isLE = this.endianness === Endianness.LE;
-    const view = new DataView(this.buf.bytes({ copy: false }).buffer, pos);
+    const view = new DataView(this.#buf.bytes({ copy: false }).buffer, pos);
 
     switch (v.sig) {
       case "y":
@@ -242,21 +245,21 @@ export class MessageWriter {
   }
 
   writeRawBytes(bytes: Uint8Array): void {
-    writeAllSync(this.buf, bytes);
-    this.pos += bytes.byteLength;
+    writeAllSync(this.#buf, bytes);
+    this.#pos += bytes.byteLength;
   }
 
   writePadding(alignment: number): void {
-    if (this.pos % alignment === 0) return;
-    const padding = alignment - this.pos % alignment;
+    if (this.#pos % alignment === 0) return;
+    const padding = alignment - this.#pos % alignment;
     this.writeRawBytes(new Uint8Array(padding));
   }
 
   writeLater(sig: FixedTypeSig): (value: unknown) => void {
     const pos = this.reserveAligned(fixedTypeSizes[sig]);
-    this.writeLaterPositions.add(pos);
+    this.#writeLaterPositions.add(pos);
     return (value) => {
-      if (!this.writeLaterPositions.delete(pos)) {
+      if (!this.#writeLaterPositions.delete(pos)) {
         throw new Error(
           `multiple calls to writeLater callback for signature "${sig}" at position ${pos}`,
         );
@@ -266,8 +269,8 @@ export class MessageWriter {
   }
 
   measureLength(f: () => void): number {
-    const beforePos = this.pos;
+    const beforePos = this.#pos;
     f();
-    return this.pos - beforePos;
+    return this.#pos - beforePos;
   }
 }
