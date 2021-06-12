@@ -13,6 +13,8 @@ import { HeaderField, Message } from "./message.ts";
 import { parseSig, parseSigs } from "./sig_parser.ts";
 import { assertExhaustive } from "./util/assert.ts";
 import { encodeUtf8, Endianness, nativeEndian } from "./util/encoding.ts";
+import { Buffer } from "https://deno.land/std@0.98.0/io/buffer.ts";
+import { writeAllSync } from "https://deno.land/std@0.98.0/io/util.ts";
 
 // TODO(solson): Move to ./util
 function charCode(s: string): number {
@@ -37,18 +39,17 @@ export class MessageWriter {
   private writeLaterPositions = new Set();
 
   constructor(
-    private buf: Deno.Buffer,
+    private buf: Buffer,
     readonly endianness: Endianness = nativeEndian(),
   ) {}
 
-  // TODO(solson): Deno.Buffer is deprecated, so figure out the replacement.
   static encode(
     msg: Message,
     serial: number,
     endianness: Endianness,
-  ): Deno.Buffer {
+  ): Buffer {
     const raw = msg.toRaw();
-    const buf = new Deno.Buffer();
+    const buf = new Buffer();
     const w = new MessageWriter(buf, endianness);
 
     // TODO(solson): Validate that it's actually a string.
@@ -241,7 +242,7 @@ export class MessageWriter {
   }
 
   writeRawBytes(bytes: Uint8Array): void {
-    Deno.writeAllSync(this.buf, bytes);
+    writeAllSync(this.buf, bytes);
     this.pos += bytes.byteLength;
   }
 

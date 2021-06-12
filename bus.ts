@@ -1,6 +1,6 @@
-import { BufReader } from "https://deno.land/std@0.97.0/io/bufio.ts";
-import { join } from "https://deno.land/std@0.97.0/path/mod.ts";
-import { writeAll } from "https://deno.land/std@0.97.0/io/util.ts";
+import { BufReader } from "https://deno.land/std@0.98.0/io/bufio.ts";
+import { join } from "https://deno.land/std@0.98.0/path/mod.ts";
+import { writeAll } from "https://deno.land/std@0.98.0/io/util.ts";
 import { ErrorMsg, Message, MethodCall, MethodReturn } from "./message.ts";
 import { MessageReader } from "./message_reader.ts";
 import { MessageWriter } from "./message_writer.ts";
