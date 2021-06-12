@@ -1,7 +1,13 @@
 import { BufReader } from "https://deno.land/std@0.98.0/io/bufio.ts";
 import { join } from "https://deno.land/std@0.98.0/path/mod.ts";
 import { writeAll } from "https://deno.land/std@0.98.0/io/util.ts";
-import { ErrorMsg, Message, MethodCall, MethodReturn } from "./message.ts";
+import {
+  ErrorMsg,
+  LabeledMessage,
+  Message,
+  MethodCall,
+  MethodReturn,
+} from "./message.ts";
 import { MessageReader } from "./message_reader.ts";
 import { MessageWriter } from "./message_writer.ts";
 import { encodeUtf8, Endianness, nativeEndian } from "./util/encoding.ts";
@@ -26,8 +32,6 @@ export type ConnectionOptions = {
   name: string;
   endianness?: Endianness;
 };
-
-export type LabeledMessage = { msg: Message; serial: number; sender: string };
 
 type ReplyCallbacks = {
   resolve: (m: LabeledMessage) => void;

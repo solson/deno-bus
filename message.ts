@@ -210,3 +210,9 @@ export type Message =
   | MethodReturn
   | ErrorMsg
   | Signal;
+
+export type LabeledMessage = {
+  msg: Message;
+  serial: number;
+  sender: string;
+};

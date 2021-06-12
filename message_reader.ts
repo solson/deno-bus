@@ -13,6 +13,7 @@ import { ProtocolError } from "./errors.ts";
 import {
   ErrorMsg,
   HeaderField,
+  LabeledMessage,
   Message,
   MessageType,
   MethodCall,
@@ -42,9 +43,7 @@ export class MessageReader {
 
   constructor(private reader: Deno.Reader) {}
 
-  static async read(
-    reader: Deno.Reader,
-  ): Promise<{ msg: Message; serial: number; sender: string }> {
+  static async read(reader: Deno.Reader): Promise<LabeledMessage> {
     const r = new MessageReader(reader);
     await r.readEndianness();
     const type = await r.readFixed("y");
